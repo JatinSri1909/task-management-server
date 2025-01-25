@@ -1,10 +1,13 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction, RequestHandler as ExpressRequestHandler } from 'express';
 
-export type RequestHandler = (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => Promise<void> | void;
+export interface AuthRequest extends Request {
+  user?: {
+    _id: string;
+    email: string;
+  };
+}
+
+export type RequestHandler = ExpressRequestHandler;
 
 export type ErrorRequestHandler = (
   err: any,

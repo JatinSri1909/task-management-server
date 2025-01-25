@@ -1,13 +1,8 @@
 import express from 'express';
 import { body } from 'express-validator';
 import { validate } from '../middleware/validateMiddleware';
-import {
-  getTasks,
-  createTask,
-  updateTask,
-  deleteTask,
-  getTaskStats
-} from '../controllers/taskController';
+import * as taskController from '../controllers/taskController';
+import { protect } from '../middleware/authMiddleware';
 
 const router = express.Router();
 
@@ -51,10 +46,10 @@ const updateTaskValidation = [
     .withMessage('Status must be either pending or finished')
 ];
 
-router.get('/', getTasks);
-router.post('/', validate(taskValidation), createTask);
-router.patch('/:id', validate(updateTaskValidation), updateTask);
-router.delete('/:id', deleteTask);
-router.get('/stats', getTaskStats);
+router.get('/', taskController.getTasks);
+router.post('/', validate(taskValidation), taskController.createTask);
+router.patch('/:id', validate(updateTaskValidation), taskController.updateTask);
+router.delete('/:id', taskController.deleteTask);
+router.get('/stats', protect, taskController.getTaskStats);
 
 export default router;

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { Task } from '../models/Task';
 import { RequestHandler } from '../types/express';
+import { AuthRequest } from '../types/express';
 
 export const getTasks: RequestHandler = async (req, res) => {
   try {
@@ -47,18 +48,53 @@ export const createTask: RequestHandler = async (req, res) => {
 
 export const updateTask: RequestHandler = async (req, res) => {
   try {
+    console.log('Update Task Request:', {
+      id: req.params.id,
+      userId: req.user._id,
+      body: req.body,
+      headers: req.headers,
+      method: req.method
+    });
+
+    // Create update object with only provided fields
+    const updateFields: any = {};
+    
+    if (req.body.title !== undefined) updateFields.title = req.body.title;
+    if (req.body.priority !== undefined) updateFields.priority = req.body.priority;
+    if (req.body.status !== undefined) updateFields.status = req.body.status;
+    if (req.body.startTime !== undefined) updateFields.startTime = new Date(req.body.startTime);
+    if (req.body.endTime !== undefined) updateFields.endTime = new Date(req.body.endTime);
+
+    // Validate that at least one field is being updated
+    if (Object.keys(updateFields).length === 0) {
+      res.status(400).json({ message: 'No fields to update' });
+      return;
+    }
+
     const task = await Task.findOneAndUpdate(
       { _id: req.params.id, userId: req.user._id },
-      req.body,
-      { new: true }
+      { $set: updateFields },
+      { new: true, runValidators: true }
     );
+
     if (!task) {
       res.status(404).json({ message: 'Task not found' });
       return;
     }
+
+    console.log('Updated Task:', task);
     res.json(task);
-  } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+  } catch (error: any) {
+    console.error('Update Task Error:', {
+      error: error.message,
+      stack: error.stack,
+      body: req.body
+    });
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: error.message,
+      details: error.stack 
+    });
   }
 };
 
@@ -78,41 +114,146 @@ export const deleteTask: RequestHandler = async (req, res) => {
   }
 };
 
-export const getTaskStats: RequestHandler = async (req, res) => {
+export const getTaskStats: RequestHandler = async (req: AuthRequest, res) => {
   try {
-    const tasks = await Task.find({ userId: req.user._id });
-    const totalTasks = tasks.length;
-    const completedTasks = tasks.filter(t => t.status === 'finished').length;
-    
-    const stats = {
-      totalTasks,
-      completedPercentage: (completedTasks / totalTasks) * 100 || 0,
-      pendingPercentage: ((totalTasks - completedTasks) / totalTasks) * 100 || 0,
-      pendingTasksByPriority: await Task.aggregate([
-        { $match: { userId: req.user._id, status: 'pending' } },
-        { $group: { 
-          _id: '$priority',
-          timeElapsed: { $sum: { $subtract: [new Date(), '$startTime'] } },
-          estimatedTimeLeft: { $sum: { $subtract: ['$endTime', new Date()] } }
-        }},
-        { $project: {
-          priority: '$_id',
-          timeElapsed: 1,
-          estimatedTimeLeft: 1,
-          _id: 0
-        }}
-      ]),
-      averageCompletionTime: await Task.aggregate([
-        { $match: { userId: req.user._id, status: 'finished' } },
-        { $group: {
+    const userId = req.user?._id;
+
+    // Get basic task counts
+    const totalTasks = await Task.countDocuments({ userId });
+    const completedTasks = await Task.countDocuments({ userId, status: 'finished' });
+    const pendingTasks = await Task.countDocuments({ userId, status: 'pending' });
+
+    // Calculate percentages
+    const completedPercentage = totalTasks > 0 
+      ? Math.round((completedTasks / totalTasks) * 100) 
+      : 0;
+    const pendingPercentage = totalTasks > 0 
+      ? Math.round((pendingTasks / totalTasks) * 100) 
+      : 0;
+
+    // Calculate average time for completed tasks
+    const completedTasksStats = await Task.aggregate([
+      {
+        $match: {
+          userId: userId,
+          status: 'finished'
+        }
+      },
+      {
+        $project: {
+          completionTime: {
+            $divide: [
+              { $subtract: ['$endTime', '$startTime'] },
+              3600000 // Convert to hours
+            ]
+          }
+        }
+      },
+      {
+        $group: {
           _id: null,
-          avgTime: { $avg: { $subtract: ['$updatedAt', '$startTime'] } }
-        }}
-      ]).then(result => result[0]?.avgTime || 0)
-    };
-    
-    res.json(stats);
+          totalCompletionTime: { $sum: '$completionTime' },
+          completedTaskCount: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Calculate average completion time
+    const averageCompletionTime = completedTasksStats[0]
+      ? Math.round((completedTasksStats[0].totalCompletionTime / completedTasksStats[0].completedTaskCount) * 10) / 10
+      : 0;
+
+    // Get pending tasks analysis with time calculations
+    const pendingTasksByPriority = await Task.aggregate([
+      { 
+        $match: { 
+          userId: userId,
+          status: 'pending' 
+        } 
+      },
+      {
+        $group: {
+          _id: '$priority',
+          count: { $sum: 1 },
+          timeElapsed: {
+            $sum: {
+              $cond: [
+                { 
+                  $gt: [
+                    { $subtract: ['$$NOW', '$startTime'] },
+                    0
+                  ]
+                },
+                {
+                  $divide: [
+                    { $subtract: ['$$NOW', '$startTime'] },
+                    3600000
+                  ]
+                },
+                0
+              ]
+            }
+          },
+          estimatedTimeLeft: {
+            $sum: {
+              $cond: [
+                { $gt: ['$endTime', '$$NOW'] },
+                {
+                  $divide: [
+                    { $subtract: ['$endTime', '$$NOW'] },
+                    3600000
+                  ]
+                },
+                {
+                  $divide: [
+                    { $subtract: ['$endTime', '$startTime'] },
+                    3600000
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        $project: {
+          priority: '$_id',
+          count: 1,
+          timeElapsed: { $round: ['$timeElapsed', 1] },
+          estimatedTimeLeft: { $round: ['$estimatedTimeLeft', 1] },
+          _id: 0
+        }
+      },
+      { $sort: { priority: -1 } }
+    ]);
+
+    // Calculate total time metrics
+    const totalTimeMetrics = pendingTasksByPriority.reduce(
+      (acc, curr) => ({
+        totalTimeElapsed: acc.totalTimeElapsed + (curr.timeElapsed || 0),
+        totalTimeToFinish: acc.totalTimeToFinish + (curr.estimatedTimeLeft || 0)
+      }),
+      { totalTimeElapsed: 0, totalTimeToFinish: 0 }
+    );
+
+    res.json({
+      overview: {
+        totalTasks,
+        completedTasks,
+        pendingTasks,
+        completedPercentage,
+        pendingPercentage,
+      },
+      timeMetrics: {
+        averageCompletionTime,
+        totalTimeElapsed: Math.round(totalTimeMetrics.totalTimeElapsed * 10) / 10,
+        totalTimeToFinish: Math.round(totalTimeMetrics.totalTimeToFinish * 10) / 10,
+        pendingTasksByPriority
+      }
+    });
+
   } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error getting task stats:', error);
+    res.status(500).json({ message: 'Error fetching task statistics' });
   }
 };
