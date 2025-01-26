@@ -187,15 +187,14 @@ export const getTaskStats: RequestHandler = async (req: AuthRequest, res) => {
       {
         $group: {
           _id: null,
-          totalCompletionTime: { $sum: '$completionTime' },
-          completedTaskCount: { $sum: 1 }
+          totalTime: { $sum: '$completionTime' },
+          count: { $sum: 1 }
         }
       }
     ]);
 
-    // Calculate average completion time
-    const averageCompletionTime = completedTasksStats[0]
-      ? Math.round((completedTasksStats[0].totalCompletionTime / completedTasksStats[0].completedTaskCount) * 10) / 10
+    const averageTime = completedTasksStats.length > 0 
+      ? Math.round((completedTasksStats[0].totalTime / completedTasksStats[0].count) * 10) / 10 
       : 0;
 
     // Get pending tasks analysis with time calculations
@@ -278,9 +277,10 @@ export const getTaskStats: RequestHandler = async (req: AuthRequest, res) => {
         pendingTasks,
         completedPercentage,
         pendingPercentage,
+        averageTime,
       },
       timeMetrics: {
-        averageCompletionTime,
+        averageCompletionTime: averageTime,
         totalTimeElapsed: Math.round(totalTimeMetrics.totalTimeElapsed * 10) / 10,
         totalTimeToFinish: Math.round(totalTimeMetrics.totalTimeToFinish * 10) / 10,
         pendingTasksByPriority
