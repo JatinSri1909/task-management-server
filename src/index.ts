@@ -25,20 +25,26 @@ const port = process.env.PORT || 8000;
 
 // Add allowed origins array
 const allowedOrigins = [
-  'http://localhost:3000',  // Local development
-  process.env.FRONTEND_URL, // Production URL
-].filter(Boolean); // Remove any undefined values
+  process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : null,  // Local development
+  process.env.FRONTEND_URL,                                                 // Production frontend
+  process.env.BACKEND_URL                                                  // Backend URL
+].filter(Boolean); // Remove null/undefined values
 
-console.log('Configured origins:', allowedOrigins);
+// Debug log origins
+console.log('Environment:', process.env.NODE_ENV);
+console.log('Allowed Origins:', allowedOrigins);
 
 // Middleware
 app.use(cors({
   origin: (origin, callback) => {
+    console.log('Request from origin:', origin);
+
     if (!origin || allowedOrigins.includes(origin)) {
-      return callback(null, true);
+      callback(null, true);
+    } else {
+      console.log('Blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
     }
-    console.log('Blocked origin:', origin);
-    callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -46,8 +52,20 @@ app.use(cors({
   exposedHeaders: ['Access-Control-Allow-Origin']
 }));
 
-// Add CORS preflight
+// Enable pre-flight requests for all routes
 app.options('*', cors());
+
+// Add CORS headers to all responses
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  next();
+});
 
 app.use(express.json());
 
