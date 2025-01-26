@@ -34,8 +34,34 @@ export const getTasks: RequestHandler = async (req, res) => {
   }
 };
 
+const validateTaskTimes = (startTime: Date, endTime: Date) => {
+  if (startTime >= endTime) {
+    throw new Error('End time must be after start time');
+  }
+};
+
+const calculateTaskTimes = (task: ITask) => {
+  const now = new Date();
+  const startTime = new Date(task.startTime);
+  const endTime = new Date(task.endTime);
+  
+  // For completed tasks, use actual completion time
+  if (task.status === 'finished') {
+    const totalTime = Math.max(0, endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
+    return { totalTime, timeElapsed: totalTime, timeLeft: 0 };
+  }
+  
+  // For pending tasks
+  const timeElapsed = Math.max(0, now.getTime() - startTime.getTime()) / (1000 * 60 * 60);
+  const timeLeft = Math.max(0, endTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+  const totalTime = Math.max(0, endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
+  
+  return { totalTime, timeElapsed, timeLeft };
+};
+
 export const createTask: RequestHandler = async (req, res) => {
   try {
+    validateTaskTimes(new Date(req.body.startTime), new Date(req.body.endTime));
     const task = await Task.create({
       ...req.body,
       userId: req.user._id
@@ -48,6 +74,15 @@ export const createTask: RequestHandler = async (req, res) => {
 
 export const updateTask: RequestHandler = async (req, res) => {
   try {
+    if (req.body.startTime && req.body.endTime) {
+      validateTaskTimes(new Date(req.body.startTime), new Date(req.body.endTime));
+    }
+    
+    // If marking as finished, set endTime to now
+    if (req.body.status === 'finished') {
+      req.body.endTime = new Date().toISOString();
+    }
+    
     console.log('Update Task Request:', {
       id: req.params.id,
       userId: req.user._id,
