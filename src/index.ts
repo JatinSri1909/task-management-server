@@ -36,13 +36,14 @@ console.log('Allowed Origins:', allowedOrigins);
 
 // Middleware
 app.use(cors({
-  origin: 'http://localhost:3000',
+  origin: true, // Allow all origins
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Access-Control-Allow-Origin']
 }));
 
-// Enable pre-flight
+// Enable pre-flight requests for all routes
 app.options('*', cors());
 
 app.use(express.json());
