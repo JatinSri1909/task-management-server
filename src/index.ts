@@ -25,34 +25,36 @@ const port = process.env.PORT || 8000;
 
 // Add allowed origins array
 const allowedOrigins = [
-  'http://localhost:3000',
-   process.env.FRONTEND_URL,
-];
+  'http://localhost:3000',  // Local development
+  process.env.FRONTEND_URL, // Production URL
+].filter(Boolean); // Remove any undefined values
+
+console.log('Configured origins:', allowedOrigins);
 
 // Middleware
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) {
+    if (!origin || allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.log('Blocked origin:', origin);
-      callback(new Error('Not allowed by CORS'));
-    }
+    console.log('Blocked origin:', origin);
+    callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Access-Control-Allow-Origin']
 }));
 
 // Add CORS preflight
 app.options('*', cors());
 
 app.use(express.json());
+
+// Add a test route to verify CORS
+app.get('/api/test', (req, res) => {
+  res.json({ message: 'CORS is working' });
+});
 
 // Database connection with retry logic
 const connectDB = async () => {
