@@ -23,6 +23,17 @@ for (const envVar of requiredEnvVars) {
 const app: Application = express();
 const port = process.env.PORT || 8000;
 
+// Add allowed origins array
+const allowedOrigins = [
+  process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : null,  // Local development
+  process.env.FRONTEND_URL,                                                 // Production frontend
+  process.env.BACKEND_URL                                                  // Backend URL
+].filter(Boolean); // Remove null/undefined values
+
+// Debug log origins
+console.log('Environment:', process.env.NODE_ENV);
+console.log('Allowed Origins:', allowedOrigins);
+
 // Middleware
 app.use(cors({
   origin: 'http://localhost:3000',
@@ -35,6 +46,11 @@ app.use(cors({
 app.options('*', cors());
 
 app.use(express.json());
+
+// Add a test route to verify CORS
+app.get('/api/test', (req, res) => {
+  res.json({ message: 'CORS is working' });
+});
 
 // Database connection with retry logic
 const connectDB = async () => {
